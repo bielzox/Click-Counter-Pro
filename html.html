@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Click Counter Pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+* {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/* FUNDO COM IMAGEM */
+body::before { 
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("https://images.unsplash.com/photo-1511512578047-dfb367046420") center/cover no-repeat;
+  opacity: 0.5;
+  z-index: 0;
+}
+
+.container {
+  width: 380px;
+  background: rgba(26, 25, 27, 0.9);
+  padding: 20px;
+  border-radius: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+input, select {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  border: none;
+}
+
+.buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: #333;
+  color: #fff;
+}
+
+.stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+#click-area {
+  height: 120px;
+  background: #222;
+  border: 2px dashed #fff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 10px;
+}
+
+canvas {
+  width: 100%;
+  height: 120px;
+  background: #111;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th, td {
+  border: 1px solid #333;
+  padding: 5px;
+  text-align: center;
+}
+
+th {
+  background: #1f1f1f;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <h1 id="title">Click Counter</h1>
+
+  <input id="playerName" placeholder="Nome do jogador">
+
+  <select id="mode">
+    <option value="5">5s</option>
+    <option value="10" selected>10s</option>
+    <option value="30">30s</option>
+    <option value="60">60s</option>
+  </select>
+
+  <div class="buttons">
+    <button id="start">Start</button>
+    <button id="reset">Reset</button>
+    <button id="clear">Clear</button>
+  </div>
+
+  <div class="stats">
+    <div>Clicks: <b id="clicks">0</b></div>
+    <div>Time: <b id="time">0.0</b>s</div>
+    <div>Fps: <b id="fps">0</b></div>
+  </div>
+
+  <div id="click-area">CLICK</div>
+
+  <canvas id="chart"></canvas>
+
+  <h3>Ranking</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Name</th>
+        <th>Clicks</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="ranking"></tbody>
+  </table>
+</div>
+
+<script>
+let clicks = 0;
+let running = false;
+let startTime = 0;
+let duration = 10;
+let timer;
+
+let fpsCounter = 0;
+let fps = 0;
+let lastFps = performance.now();
+
+const clicksEl = document.getElementById("clicks");
+const timeEl = document.getElementById("time");
+const fpsEl = document.getElementById("fps");
+const chart = document.getElementById("chart");
+const ctx = chart.getContext("2d");
+const rankingEl = document.getElementById("ranking");
+
+let data = [];
+let ranking = JSON.parse(localStorage.getItem("ranking")) || [];
+
+chart.width = 340;
+chart.height = 120;
+
+document.getElementById("start").onclick = () => {
+  clicks = 0;
+  data = [];
+  duration = parseInt(document.getElementById("mode").value);
+  startTime = performance.now();
+  running = true;
+  clearInterval(timer);
+  timer = setInterval(update, 16);
+};
+
+document.getElementById("reset").onclick = () => {
+  running = false;
+  clearInterval(timer);
+  clicksEl.textContent = 0;
+  timeEl.textContent = duration.toFixed(1);
+};
+
+document.getElementById("clear").onclick = () => {
+  localStorage.clear();
+  ranking = [];
+  renderRanking();
+};
+
+document.getElementById("click-area").onclick = () => {
+  if (!running) return;
+  clicks++;
+  clicksEl.textContent = clicks;
+};
+
+function update() {
+  const now = performance.now();
+  const elapsed = (now - startTime) / 1000;
+  const remaining = duration - elapsed;
+
+  fpsCounter++;
+  if (now - lastFps >= 1000) {
+    fps = fpsCounter;
+    fpsCounter = 0;
+    lastFps = now;
+    fpsEl.textContent = fps;
+  }
+
+  if (remaining <= 0) {
+    finish();
+    return;
+  }
+
+  timeEl.textContent = remaining.toFixed(1);
+  data.push(clicks);
+  drawChart();
+}
+
+function finish() {
+  running = false;
+  clearInterval(timer);
+
+  const name = document.getElementById("playerName").value || "Player";
+  ranking.push({ name, clicks, time: duration });
+  ranking.sort((a,b)=>b.clicks-a.clicks);
+  localStorage.setItem("ranking", JSON.stringify(ranking));
+  renderRanking();
+}
+
+function drawChart() {
+  ctx.clearRect(0,0,chart.width,chart.height);
+  ctx.beginPath();
+  ctx.strokeStyle = "#00e5ff";
+  data.forEach((v,i)=>{
+    const x = (i/data.length)*chart.width;
+    const y = chart.height - (v/(Math.max(...data)+1))*chart.height;
+    if(i===0) ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+}
+
+function renderRanking() {
+  rankingEl.innerHTML = "";
+  ranking.forEach((p,i)=>{
+    rankingEl.innerHTML += `
+      <tr>
+        <td>${i+1}</td>
+        <td>${p.name}</td>
+        <td>${p.clicks}</td>
+        <td>${p.time}s</td>
+      </tr>
+    `;
+  });
+}
+
+renderRanking();
+</script>
+
+</body>
+</html>
